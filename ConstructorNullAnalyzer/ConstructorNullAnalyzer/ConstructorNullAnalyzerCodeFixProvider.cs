@@ -1,4 +1,3 @@
-using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Composition;
@@ -10,15 +9,18 @@ using Microsoft.CodeAnalysis.CodeFixes;
 using Microsoft.CodeAnalysis.CodeActions;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Microsoft.CodeAnalysis.Editing;
+using Microsoft.CodeAnalysis.Formatting;
+using Microsoft.CodeAnalysis.Options;
 using Microsoft.CodeAnalysis.Rename;
-using Microsoft.CodeAnalysis.Text;
+using static Microsoft.CodeAnalysis.CSharp.SyntaxFactory;
 
 namespace ConstructorNullAnalyzer
 {
     [ExportCodeFixProvider(LanguageNames.CSharp, Name = nameof(ConstructorNullAnalyzerCodeFixProvider)), Shared]
     public class ConstructorNullAnalyzerCodeFixProvider : CodeFixProvider
     {
-        private const string title = "Make uppercase";
+        private const string title = "Add null reference check";
 
         public sealed override ImmutableArray<string> FixableDiagnosticIds
         {
@@ -27,7 +29,6 @@ namespace ConstructorNullAnalyzer
 
         public sealed override FixAllProvider GetFixAllProvider()
         {
-            // See https://github.com/dotnet/roslyn/blob/master/docs/analyzers/FixAllProvider.md for more information on Fix All Providers
             return WellKnownFixAllProviders.BatchFixer;
         }
 
@@ -35,39 +36,77 @@ namespace ConstructorNullAnalyzer
         {
             var root = await context.Document.GetSyntaxRootAsync(context.CancellationToken).ConfigureAwait(false);
 
-            // TODO: Replace the following code with your own analysis, generating a CodeAction for each fix to suggest
             var diagnostic = context.Diagnostics.First();
             var diagnosticSpan = diagnostic.Location.SourceSpan;
 
             // Find the type declaration identified by the diagnostic.
-            var declaration = root.FindToken(diagnosticSpan.Start).Parent.AncestorsAndSelf().OfType<TypeDeclarationSyntax>().First();
+            var constructorToken = root.FindToken(diagnosticSpan.Start).Parent as ConstructorDeclarationSyntax;
+            var paramNames = diagnostic.AdditionalLocations.Select(x => GetParamName(constructorToken, x));
 
             // Register a code action that will invoke the fix.
             context.RegisterCodeFix(
                 CodeAction.Create(
                     title: title,
-                    createChangedSolution: c => MakeUppercaseAsync(context.Document, declaration, c), 
+                    createChangedSolution: c => AddNullCheck(context.Document, constructorToken, paramNames, c), 
                     equivalenceKey: title),
                 diagnostic);
         }
 
-        private async Task<Solution> MakeUppercaseAsync(Document document, TypeDeclarationSyntax typeDecl, CancellationToken cancellationToken)
+        private string GetParamName(SyntaxNode root, Location location)
         {
-            // Compute new uppercase name.
-            var identifierToken = typeDecl.Identifier;
-            var newName = identifierToken.Text.ToUpperInvariant();
+            var paramToken = root.FindToken(location.SourceSpan.Start);
+            return paramToken.ValueText;
+        }
 
-            // Get the symbol representing the type to be renamed.
-            var semanticModel = await document.GetSemanticModelAsync(cancellationToken);
-            var typeSymbol = semanticModel.GetDeclaredSymbol(typeDecl, cancellationToken);
+        private ConstructorDeclarationSyntax GetParentConstructorSyntax(SyntaxNode node)
+        {
+            if (node.Parent == null)
+                return null;
+            if (node.Parent is ConstructorDeclarationSyntax constructorSyntax)
+            {
+                return constructorSyntax;
+            }
 
-            // Produce a new solution that has all references to that type renamed, including the declaration.
-            var originalSolution = document.Project.Solution;
-            var optionSet = originalSolution.Workspace.Options;
-            var newSolution = await Renamer.RenameSymbolAsync(document.Project.Solution, typeSymbol, newName, optionSet, cancellationToken).ConfigureAwait(false);
+            return GetParentConstructorSyntax(node.Parent);
+        }
 
-            // Return the new solution with the now-uppercase type name.
-            return newSolution;
+        private async Task<Solution> AddNullCheck(Document document, ConstructorDeclarationSyntax constructor, IEnumerable<string> paramNames, CancellationToken cancellationToken)
+        {
+            var ifStatements = paramNames.Select(CreateIfStatement);
+            var newBodyStatements = constructor.Body.Statements.InsertRange(0, ifStatements);
+            var newBody = constructor.Body.WithStatements(newBodyStatements);
+
+            var workspace = document.Project.Solution.Workspace;
+            
+            var formattedBody = Formatter.Format(newBody,
+                Formatter.Annotation,
+                workspace,
+                options: workspace.Options,
+                cancellationToken: cancellationToken);
+            
+            var documentEditor = await DocumentEditor.CreateAsync(document, cancellationToken);
+            documentEditor.ReplaceNode(constructor.Body, formattedBody);
+
+            var newDocument = documentEditor.GetChangedDocument();
+
+            return newDocument.Project.Solution;
+        }
+
+        private static IfStatementSyntax CreateIfStatement(string paramName)
+        {
+            var identifier = IdentifierName(paramName);
+            var nullSyntax = LiteralExpression(SyntaxKind.NullLiteralExpression);
+            var condition = BinaryExpression(SyntaxKind.EqualsExpression, identifier, nullSyntax);
+
+            var exceptionTypeSyntax = ParseTypeName("ArgumentNullException");
+            var argumentSyntax = Argument(LiteralExpression(SyntaxKind.StringLiteralExpression, Literal(paramName)));
+            var newStatement = ObjectCreationExpression(exceptionTypeSyntax)
+                .WithArgumentList(ArgumentList(SingletonSeparatedList(argumentSyntax)));
+
+            var throwStatement = ThrowStatement().WithExpression(newStatement);
+
+            var ifStatement = IfStatement(condition, throwStatement);
+            return ifStatement;
         }
     }
 }

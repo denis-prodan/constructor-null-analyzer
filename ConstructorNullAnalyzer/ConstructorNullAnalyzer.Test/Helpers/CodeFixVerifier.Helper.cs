@@ -78,7 +78,7 @@ namespace TestHelper
             var simplifiedDoc = Simplifier.ReduceAsync(document, Simplifier.Annotation).Result;
             var root = simplifiedDoc.GetSyntaxRootAsync().Result;
             root = Formatter.Format(root, Formatter.Annotation, simplifiedDoc.Project.Solution.Workspace);
-            return root.GetText().ToString();
+            return root.GetText().ToString().Replace("\r\n", "\n");
         }
     }
 }

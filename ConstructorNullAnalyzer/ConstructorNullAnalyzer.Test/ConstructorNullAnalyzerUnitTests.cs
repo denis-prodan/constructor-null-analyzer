@@ -36,21 +36,27 @@ namespace ConstructorNullAnalyzer.Test
     namespace ConsoleApplication1
     {
         class TypeName
-        {   
+        {
+            public TypeName(string param1, int param2, String param3, int? param4)
+            {
+            }
         }
     }";
-            var expected = new DiagnosticResult
+            var expected1 = new DiagnosticResult
             {
-                Id = "ConstructorNullAnalyzer",
-                Message = String.Format("Type name '{0}' contains lowercase letters", "TypeName"),
+                Id = "CA001",
+                Message = string.Format("Constructor should check that parameter(s) {0} are not null", "param1, param3"),
                 Severity = DiagnosticSeverity.Warning,
                 Locations =
-                    new[] {
-                            new DiagnosticResultLocation("Test0.cs", 11, 15)
-                        }
+                    new[]
+                    {
+                        new DiagnosticResultLocation("Test0.cs", 13, 20),
+                        new DiagnosticResultLocation("Test0.cs", 13, 36),
+                        new DiagnosticResultLocation("Test0.cs", 13, 63)
+                    }
             };
 
-            VerifyCSharpDiagnostic(test, expected);
+            VerifyCSharpDiagnostic(test, expected1);
 
             var fixtest = @"
     using System;
@@ -62,8 +68,15 @@ namespace ConstructorNullAnalyzer.Test
 
     namespace ConsoleApplication1
     {
-        class TYPENAME
-        {   
+        class TypeName
+        {
+            public TypeName(string param1, int param2, String param3, int? param4)
+            {
+            if (param1 == null)
+                throw new ArgumentNullException(""param1"");
+            if (param3 == null)
+                throw new ArgumentNullException(""param3"");
+        }
         }
     }";
             VerifyCSharpFix(test, fixtest);
