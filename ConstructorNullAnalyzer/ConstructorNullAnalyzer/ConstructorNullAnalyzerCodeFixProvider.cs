@@ -10,9 +10,6 @@ using Microsoft.CodeAnalysis.CodeActions;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Editing;
-using Microsoft.CodeAnalysis.Formatting;
-using Microsoft.CodeAnalysis.Options;
-using Microsoft.CodeAnalysis.Rename;
 using static Microsoft.CodeAnalysis.CSharp.SyntaxFactory;
 
 namespace ConstructorNullAnalyzer
@@ -22,10 +19,7 @@ namespace ConstructorNullAnalyzer
     {
         private const string title = "Add null reference check";
 
-        public sealed override ImmutableArray<string> FixableDiagnosticIds
-        {
-            get { return ImmutableArray.Create(ConstructorNullAnalyzerAnalyzer.DiagnosticId); }
-        }
+        public sealed override ImmutableArray<string> FixableDiagnosticIds => ImmutableArray.Create(ConstructorNullAnalyzer.DiagnosticId);
 
         public sealed override FixAllProvider GetFixAllProvider()
         {
@@ -58,34 +52,14 @@ namespace ConstructorNullAnalyzer
             return paramToken.ValueText;
         }
 
-        private ConstructorDeclarationSyntax GetParentConstructorSyntax(SyntaxNode node)
-        {
-            if (node.Parent == null)
-                return null;
-            if (node.Parent is ConstructorDeclarationSyntax constructorSyntax)
-            {
-                return constructorSyntax;
-            }
-
-            return GetParentConstructorSyntax(node.Parent);
-        }
-
         private async Task<Solution> AddNullCheck(Document document, ConstructorDeclarationSyntax constructor, IEnumerable<string> paramNames, CancellationToken cancellationToken)
         {
             var ifStatements = paramNames.Select(CreateIfStatement);
             var newBodyStatements = constructor.Body.Statements.InsertRange(0, ifStatements);
             var newBody = constructor.Body.WithStatements(newBodyStatements);
 
-            var workspace = document.Project.Solution.Workspace;
-            
-            var formattedBody = Formatter.Format(newBody,
-                Formatter.Annotation,
-                workspace,
-                options: workspace.Options,
-                cancellationToken: cancellationToken);
-            
             var documentEditor = await DocumentEditor.CreateAsync(document, cancellationToken);
-            documentEditor.ReplaceNode(constructor.Body, formattedBody);
+            documentEditor.ReplaceNode(constructor.Body, newBody);
 
             var newDocument = documentEditor.GetChangedDocument();
 

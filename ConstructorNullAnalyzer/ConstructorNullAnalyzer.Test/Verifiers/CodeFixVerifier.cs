@@ -1,3 +1,4 @@
+using System;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CodeActions;
 using Microsoft.CodeAnalysis.CodeFixes;
@@ -122,7 +123,18 @@ namespace TestHelper
 
             //after applying all of the code fixes, compare the resulting string to the inputted one
             var actual = GetStringFromDocument(document);
-            Assert.AreEqual(newSource, actual);
+
+            var newSourceWithoutFormattiong = RemoveFormatting(newSource);
+            var actualWithoutFormatting = RemoveFormatting(actual);
+
+            Assert.AreEqual(newSourceWithoutFormattiong, actualWithoutFormatting);
+        }
+
+        private string RemoveFormatting(string code)
+        {
+            return code
+                .Replace("\r\n", "")
+                .Replace("\n", "");
         }
     }
 }

@@ -2,19 +2,17 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CodeFixes;
 using Microsoft.CodeAnalysis.Diagnostics;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
-using System;
 using TestHelper;
-using ConstructorNullAnalyzer;
 
 namespace ConstructorNullAnalyzer.Test
 {
     [TestClass]
-    public class UnitTest : CodeFixVerifier
+    public class ConstructorNullAnalyzerTest : CodeFixVerifier
     {
 
         //No diagnostics expected to show up
         [TestMethod]
-        public void TestMethod1()
+        public void EmptyIsValid()
         {
             var test = @"";
 
@@ -23,7 +21,7 @@ namespace ConstructorNullAnalyzer.Test
 
         //Diagnostic and CodeFix both triggered and checked for
         [TestMethod]
-        public void TestMethod2()
+        public void FixForMixedType()
         {
             var test = @"
     using System;
@@ -89,7 +87,7 @@ namespace ConstructorNullAnalyzer.Test
 
         protected override DiagnosticAnalyzer GetCSharpDiagnosticAnalyzer()
         {
-            return new ConstructorNullAnalyzerAnalyzer();
+            return new ConstructorNullAnalyzer();
         }
     }
 }

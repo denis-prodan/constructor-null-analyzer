@@ -9,7 +9,7 @@ using Microsoft.CodeAnalysis.Diagnostics;
 namespace ConstructorNullAnalyzer
 {
     [DiagnosticAnalyzer(LanguageNames.CSharp)]
-    public class ConstructorNullAnalyzerAnalyzer : DiagnosticAnalyzer
+    public class ConstructorNullAnalyzer : DiagnosticAnalyzer
     {
         private const string Category = "Correctness";
         public const string DiagnosticId = "CA001";
