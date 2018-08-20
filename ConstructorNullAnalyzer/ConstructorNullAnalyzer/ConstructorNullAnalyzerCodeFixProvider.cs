@@ -73,7 +73,14 @@ namespace ConstructorNullAnalyzer
             var condition = BinaryExpression(SyntaxKind.EqualsExpression, identifier, nullSyntax);
 
             var exceptionTypeSyntax = ParseTypeName("ArgumentNullException");
-            var argumentSyntax = Argument(LiteralExpression(SyntaxKind.StringLiteralExpression, Literal(paramName)));
+
+            var nameOfIdentifier = Identifier(TriviaList(), SyntaxKind.NameOfKeyword, "nameof", "nameof", TriviaList());
+            var argumentSyntax = Argument(InvocationExpression(IdentifierName(nameOfIdentifier))
+                .WithArgumentList(
+                    ArgumentList(
+                        SingletonSeparatedList(
+                            Argument(identifier)))));
+
             var newStatement = ObjectCreationExpression(exceptionTypeSyntax)
                 .WithArgumentList(ArgumentList(SingletonSeparatedList(argumentSyntax)));
 
