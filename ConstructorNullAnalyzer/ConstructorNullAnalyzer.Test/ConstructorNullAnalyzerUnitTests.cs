@@ -71,9 +71,9 @@ namespace ConstructorNullAnalyzer.Test
             public TypeName(string param1, int param2, String param3, int? param4)
             {
             if (param1 == null)
-                throw new ArgumentNullException(""param1"");
+                throw new ArgumentNullException(nameof(param1));
             if (param3 == null)
-                throw new ArgumentNullException(""param3"");
+                throw new ArgumentNullException(nameof(param3));
         }
         }
     }";
