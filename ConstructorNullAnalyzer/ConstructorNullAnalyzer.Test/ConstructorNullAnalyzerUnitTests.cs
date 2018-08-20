@@ -9,6 +9,20 @@ namespace ConstructorNullAnalyzer.Test
     [TestClass]
     public class ConstructorNullAnalyzerTest : CodeFixVerifier
     {
+        private const string CodeWrapper = @"
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+using System.Diagnostics;
+
+namespace ConsoleApplication1
+{{
+    class TypeName
+    {{{0}
+    }}
+}}";
 
         //No diagnostics expected to show up
         [TestMethod]
@@ -19,28 +33,16 @@ namespace ConstructorNullAnalyzer.Test
             VerifyCSharpDiagnostic(test);
         }
 
-        //Diagnostic and CodeFix both triggered and checked for
         [TestMethod]
         public void FixForMixedType()
         {
-            var test = @"
-    using System;
-    using System.Collections.Generic;
-    using System.Linq;
-    using System.Text;
-    using System.Threading.Tasks;
-    using System.Diagnostics;
-
-    namespace ConsoleApplication1
-    {
-        class TypeName
+            var constructorDeclaration = @"
+        public TypeName(string param1, int param2, String param3, int? param4)
         {
-            public TypeName(string param1, int param2, String param3, int? param4)
-            {
-            }
-        }
-    }";
-            var expected1 = new DiagnosticResult
+        }";
+
+            var test = BuildDocumentCode(constructorDeclaration);
+            var expected = new DiagnosticResult
             {
                 Id = "CA001",
                 Message = string.Format("Constructor should check that parameter(s) {0} are not null", "param1, param3"),
@@ -48,36 +50,69 @@ namespace ConstructorNullAnalyzer.Test
                 Locations =
                     new[]
                     {
-                        new DiagnosticResultLocation("Test0.cs", 13, 20),
-                        new DiagnosticResultLocation("Test0.cs", 13, 36),
-                        new DiagnosticResultLocation("Test0.cs", 13, 63)
+                        new DiagnosticResultLocation("Test0.cs", 13, 16),
+                        new DiagnosticResultLocation("Test0.cs", 13, 32),
+                        new DiagnosticResultLocation("Test0.cs", 13, 59)
                     }
             };
 
-            VerifyCSharpDiagnostic(test, expected1);
+            VerifyCSharpDiagnostic(test, expected);
 
-            var fixtest = @"
-    using System;
-    using System.Collections.Generic;
-    using System.Linq;
-    using System.Text;
-    using System.Threading.Tasks;
-    using System.Diagnostics;
-
-    namespace ConsoleApplication1
-    {
-        class TypeName
+            var newConstructor = @"
+        public TypeName(string param1, int param2, String param3, int? param4)
         {
-            public TypeName(string param1, int param2, String param3, int? param4)
-            {
             if (param1 == null)
                 throw new ArgumentNullException(nameof(param1));
             if (param3 == null)
                 throw new ArgumentNullException(nameof(param3));
-        }
-        }
-    }";
+        }";
+            var fixtest = BuildDocumentCode(newConstructor);
+
             VerifyCSharpFix(test, fixtest);
+        }
+
+        [TestMethod]
+        public void NoChecksIfCoalesceCheck()
+        {
+            var constructorDeclaration = @"
+        private readonly string param2;
+        public TypeName(string param1, string param2)
+        {
+            var s = param1 ?? throw new ArgumentException(nameof(param1));
+            this.param2 = param2 ?? throw new ArgumentException(nameof(param2));
+        }";
+
+            var test = BuildDocumentCode(constructorDeclaration);
+
+            VerifyCSharpDiagnostic(test);
+        }
+
+        [TestMethod]
+        public void SimpleAssignmentsThrowsError()
+        {
+            var constructorDeclaration = @"
+        private readonly string param2;
+        public TypeName(string param1)
+        {
+            var s = param1;
+        }";
+
+            var test = BuildDocumentCode(constructorDeclaration);
+
+            var expected = new DiagnosticResult
+            {
+                Id = "CA001",
+                Message = string.Format("Constructor should check that parameter(s) {0} are not null", "param1"),
+                Severity = DiagnosticSeverity.Warning,
+                Locations =
+                    new[]
+                    {
+                        new DiagnosticResultLocation("Test0.cs", 14, 16),
+                        new DiagnosticResultLocation("Test0.cs", 14, 32),
+                    }
+            };
+
+            VerifyCSharpDiagnostic(test, expected);
         }
 
         protected override CodeFixProvider GetCSharpCodeFixProvider()
@@ -89,5 +124,7 @@ namespace ConstructorNullAnalyzer.Test
         {
             return new ConstructorNullAnalyzer();
         }
+
+        private string BuildDocumentCode(string constructor) => string.Format(CodeWrapper, constructor);
     }
 }
