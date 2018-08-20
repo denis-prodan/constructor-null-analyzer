@@ -91,7 +91,6 @@ namespace ConsoleApplication1
         public void SimpleAssignmentsThrowsError()
         {
             var constructorDeclaration = @"
-        private readonly string param2;
         public TypeName(string param1)
         {
             var s = param1;
@@ -107,12 +106,48 @@ namespace ConsoleApplication1
                 Locations =
                     new[]
                     {
-                        new DiagnosticResultLocation("Test0.cs", 14, 16),
-                        new DiagnosticResultLocation("Test0.cs", 14, 32),
+                        new DiagnosticResultLocation("Test0.cs", 13, 16),
+                        new DiagnosticResultLocation("Test0.cs", 13, 32),
                     }
             };
 
             VerifyCSharpDiagnostic(test, expected);
+        }
+
+        [TestMethod]
+        public void GenericValidatedAndFixed()
+        {
+            var constructorDeclaration = @"
+        public TypeName(List<string> param1)
+        {
+        }";
+
+            var test = BuildDocumentCode(constructorDeclaration);
+
+            var expected = new DiagnosticResult
+            {
+                Id = "CA001",
+                Message = string.Format("Constructor should check that parameter(s) {0} are not null", "param1"),
+                Severity = DiagnosticSeverity.Warning,
+                Locations =
+                    new[]
+                    {
+                        new DiagnosticResultLocation("Test0.cs", 13, 16),
+                        new DiagnosticResultLocation("Test0.cs", 13, 38),
+                    }
+            };
+
+            VerifyCSharpDiagnostic(test, expected);
+
+            var newConstructor = @"
+        public TypeName(List<string> param1)
+        {
+            if (param1 == null)
+                throw new ArgumentNullException(nameof(param1));
+        }";
+            var fixtest = BuildDocumentCode(newConstructor);
+
+            VerifyCSharpFix(test, fixtest);
         }
 
         protected override CodeFixProvider GetCSharpCodeFixProvider()
