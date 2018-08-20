@@ -23,10 +23,10 @@ namespace ConstructorNullAnalyzer
 
         public override void Initialize(AnalysisContext context)
         {
-            context.RegisterSyntaxNodeAction(AnalyzeSymbol, SyntaxKind.ConstructorDeclaration);
+            context.RegisterSyntaxNodeAction(AnalyzeConstructor, SyntaxKind.ConstructorDeclaration);
         }
 
-        private static void AnalyzeSymbol(SyntaxNodeAnalysisContext context)
+        private static void AnalyzeConstructor(SyntaxNodeAnalysisContext context)
         {
             var referenceParameters = GetReferenceParameters(context, context.SemanticModel).ToList();
 
@@ -169,6 +169,12 @@ namespace ConstructorNullAnalyzer
             {
                 var keyword = ts.Keyword.Text;
                 return (keyword, ShouldCheckPredefinedTypeForNull(keyword));
+            }
+
+            if (typeSyntax is GenericNameSyntax gs)
+            {
+                var typeName = gs.Identifier.Text;
+                return (typeName, true);
             }
 
             if (typeSyntax is IdentifierNameSyntax ins)
