@@ -70,7 +70,37 @@ namespace ConstructorNullAnalyzer
                 return checkedVariables;
             }
 
+            if (statement is LocalDeclarationStatementSyntax declarationStatement)
+            {
+                return declarationStatement.Declaration.Variables
+                    .Select(x => x.Initializer.Value)
+                    .OfType<BinaryExpressionSyntax>()
+                    .Select(ProcessBinaryIfCoalesce);
+            }
+
+            if (statement is ExpressionStatementSyntax expressionStatement)
+            {
+                if (expressionStatement.Expression is AssignmentExpressionSyntax assignmentExpression)
+                {
+                    if (assignmentExpression.Right is BinaryExpressionSyntax binaryExpression)
+                    {
+                        return new[] {ProcessBinaryIfCoalesce(binaryExpression)};
+                    }
+                }
+            }
+
             return new List<string>();
+        }
+
+        private static string ProcessBinaryIfCoalesce(BinaryExpressionSyntax expression)
+        {
+            if (expression.IsKind(SyntaxKind.CoalesceExpression) 
+                && expression.Left is IdentifierNameSyntax identifier)
+            {
+                return identifier.Identifier.ValueText;
+            }
+
+            return null;
         }
 
         private static List<string> CheckBinaryExpression(BinaryExpressionSyntax binaryExpression)
