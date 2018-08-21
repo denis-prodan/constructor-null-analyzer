@@ -22,6 +22,7 @@ namespace ConsoleApplication1
     class TypeName
     {{{0}
     }}
+    {1}
 }}";
 
         //No diagnostics expected to show up
@@ -150,6 +151,23 @@ namespace ConsoleApplication1
             VerifyCSharpFix(test, fixtest);
         }
 
+        [TestMethod]
+        public void GenericStructNoError()
+        {
+            var constructorDeclaration = @"
+        public TypeName(TestStruct<string> param1)
+        {
+        }";
+            var genericStruct = @"
+        public struct TestStruct<T>
+        {
+        }";
+
+            var test = BuildDocumentCode(constructorDeclaration, genericStruct);
+
+            VerifyCSharpDiagnostic(test);
+        }
+
         protected override CodeFixProvider GetCSharpCodeFixProvider()
         {
             return new ConstructorNullAnalyzerCodeFixProvider();
@@ -160,6 +178,6 @@ namespace ConsoleApplication1
             return new ConstructorNullAnalyzer();
         }
 
-        private string BuildDocumentCode(string constructor) => string.Format(CodeWrapper, constructor);
+        private string BuildDocumentCode(string constructor, string addition = "") => string.Format(CodeWrapper, constructor, addition);
     }
 }
