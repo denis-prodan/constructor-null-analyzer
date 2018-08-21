@@ -60,8 +60,21 @@ namespace ConstructorNullAnalyzer
 
             var documentEditor = await DocumentEditor.CreateAsync(document, cancellationToken);
             documentEditor.ReplaceNode(constructor.Body, newBody);
-
             var newDocument = documentEditor.GetChangedDocument();
+
+            if (documentEditor.OriginalRoot is CompilationUnitSyntax compilationUnitSyntax 
+                && compilationUnitSyntax.Usings.All(x => x.Name.ToString() != "System"))
+            {
+                // Have to create new editor, since it overwrites/can't find node if do both changes in one editor
+                var usingsDocumentEditor = await DocumentEditor.CreateAsync(newDocument, cancellationToken);
+                var newCompilationUnitSyntax = usingsDocumentEditor.OriginalRoot as CompilationUnitSyntax;
+                var newUsings = newCompilationUnitSyntax.Usings.Add(UsingDirective(IdentifierName("System")))
+                    .OrderBy(x => x.Name.ToString());
+                var newRoot = newCompilationUnitSyntax.WithUsings(new SyntaxList<UsingDirectiveSyntax>(newUsings));
+                usingsDocumentEditor.ReplaceNode(newCompilationUnitSyntax, newRoot);
+
+                return usingsDocumentEditor.GetChangedDocument().Project.Solution;
+            }
 
             return newDocument.Project.Solution;
         }

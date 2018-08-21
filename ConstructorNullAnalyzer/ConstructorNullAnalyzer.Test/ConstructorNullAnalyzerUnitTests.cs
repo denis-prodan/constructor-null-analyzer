@@ -9,13 +9,13 @@ namespace ConstructorNullAnalyzer.Test
     [TestClass]
     public class ConstructorNullAnalyzerTest : CodeFixVerifier
     {
-        private const string CodeWrapper = @"
-using System;
+        private const string CodeWrapper = 
+@"using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
-using System.Diagnostics;
 
 namespace ConsoleApplication1
 {{
@@ -51,9 +51,9 @@ namespace ConsoleApplication1
                 Locations =
                     new[]
                     {
-                        new DiagnosticResultLocation("Test0.cs", 13, 16),
-                        new DiagnosticResultLocation("Test0.cs", 13, 32),
-                        new DiagnosticResultLocation("Test0.cs", 13, 59)
+                        new DiagnosticResultLocation("Test0.cs", 12, 16),
+                        new DiagnosticResultLocation("Test0.cs", 12, 32),
+                        new DiagnosticResultLocation("Test0.cs", 12, 59)
                     }
             };
 
@@ -70,6 +70,42 @@ namespace ConsoleApplication1
             var fixtest = BuildDocumentCode(newConstructor);
 
             VerifyCSharpFix(test, fixtest);
+        }
+
+        [TestMethod]
+        public void FixerAddsUsingIfMissed()
+        {
+            var constructorDeclaration = @"
+        public TypeName(string param1)
+        {
+        }";
+
+            var test = BuildDocumentCode(constructorDeclaration);
+            var testNoUsing = test.Replace("using System;", "");
+            var expected = new DiagnosticResult
+            {
+                Id = "CA001",
+                Message = string.Format("Constructor should check that parameter(s) {0} are not null", "param1"),
+                Severity = DiagnosticSeverity.Warning,
+                Locations =
+                    new[]
+                    {
+                        new DiagnosticResultLocation("Test0.cs", 12, 16),
+                        new DiagnosticResultLocation("Test0.cs", 12, 32)
+                    }
+            };
+
+            VerifyCSharpDiagnostic(testNoUsing, expected);
+
+            var newConstructor = @"
+        public TypeName(string param1)
+        {
+            if (param1 == null)
+                throw new ArgumentNullException(nameof(param1));
+        }";
+            var fixtest = BuildDocumentCode(newConstructor);
+
+            VerifyCSharpFix(testNoUsing, fixtest);
         }
 
         [TestMethod]
@@ -107,8 +143,8 @@ namespace ConsoleApplication1
                 Locations =
                     new[]
                     {
-                        new DiagnosticResultLocation("Test0.cs", 13, 16),
-                        new DiagnosticResultLocation("Test0.cs", 13, 32),
+                        new DiagnosticResultLocation("Test0.cs", 12, 16),
+                        new DiagnosticResultLocation("Test0.cs", 12, 32),
                     }
             };
 
@@ -133,8 +169,8 @@ namespace ConsoleApplication1
                 Locations =
                     new[]
                     {
-                        new DiagnosticResultLocation("Test0.cs", 13, 16),
-                        new DiagnosticResultLocation("Test0.cs", 13, 38),
+                        new DiagnosticResultLocation("Test0.cs", 12, 16),
+                        new DiagnosticResultLocation("Test0.cs", 12, 38),
                     }
             };
 
