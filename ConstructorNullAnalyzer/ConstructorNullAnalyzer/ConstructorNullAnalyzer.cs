@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Linq;
@@ -17,13 +18,38 @@ namespace ConstructorNullAnalyzer
         private static readonly LocalizableString MessageFormat = "Constructor should check that parameter(s) {0} are not null";
         private static readonly LocalizableString Description = "All reference type parameters should be checked for not-null";
 
-        private static DiagnosticDescriptor Rule = new DiagnosticDescriptor(DiagnosticId, Title, MessageFormat, Category, DiagnosticSeverity.Warning, isEnabledByDefault: true, description: Description);
+        private static readonly DiagnosticDescriptor Rule = new DiagnosticDescriptor(DiagnosticId, Title, MessageFormat, Category, DiagnosticSeverity.Warning, isEnabledByDefault: true, description: Description);
 
         public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics => ImmutableArray.Create(Rule);
 
         public override void Initialize(AnalysisContext context)
         {
-            context.RegisterSyntaxNodeAction(AnalyzeConstructor, SyntaxKind.ConstructorDeclaration);
+            context.RegisterSyntaxNodeAction(AnalyzeConstructorAndCatchUnhandledExceptions, SyntaxKind.ConstructorDeclaration);
+        }
+
+        private static void AnalyzeConstructorAndCatchUnhandledExceptions(SyntaxNodeAnalysisContext context)
+        {
+            try
+            {
+                AnalyzeConstructor(context);
+            }
+            catch (Exception e)
+            {
+                var analyzerErrorDescriptor = new DiagnosticDescriptor(
+                    id: "CA000",
+                    title: "ConstructorNullAnalyzer throws unhandled exception",
+                    messageFormat: "Analyzer failed with exception: {0}",
+                    category: Category,
+                    defaultSeverity: DiagnosticSeverity.Info,
+                    isEnabledByDefault: true,
+                    description: "Inner exception inside analyzer. Please, contact author with details");
+                var diagnostic = Diagnostic.Create(
+                    descriptor: analyzerErrorDescriptor,
+                    location: context.Node.GetLocation(),
+                    messageArgs: e.ToString());
+
+                context.ReportDiagnostic(diagnostic);
+            }
         }
 
         private static void AnalyzeConstructor(SyntaxNodeAnalysisContext context)
@@ -162,6 +188,17 @@ namespace ConstructorNullAnalyzer
 
             return typeDefinition.IsReferenceType;
         }
+        private static bool ShouldCheckGenericTypeForNull(string typeName, int arity, ImmutableArray<INamedTypeSymbol> symbols)
+        {
+            var metadataName = $"{typeName}`{arity}";
+            var typeDefinition = symbols.FirstOrDefault(x => x.MetadataName == metadataName);
+            if (typeDefinition == null)
+            {
+                return false;
+            }
+
+            return typeDefinition.IsReferenceType;
+        }
 
         private static (string typeName, bool shouldCheck) GetTypeName(TypeSyntax typeSyntax, ImmutableArray<INamedTypeSymbol> symbols)
         {
@@ -174,7 +211,8 @@ namespace ConstructorNullAnalyzer
             if (typeSyntax is GenericNameSyntax gs)
             {
                 var typeName = gs.Identifier.Text;
-                return (typeName, true);
+
+                return (typeName, ShouldCheckGenericTypeForNull(typeName, gs.Arity, symbols));
             }
 
             if (typeSyntax is IdentifierNameSyntax ins)
