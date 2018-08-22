@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Composition;
@@ -17,7 +18,8 @@ namespace ConstructorNullAnalyzer
     [ExportCodeFixProvider(LanguageNames.CSharp, Name = nameof(ConstructorNullAnalyzerCodeFixProvider)), Shared]
     public class ConstructorNullAnalyzerCodeFixProvider : CodeFixProvider
     {
-        private const string title = "Add null reference check";
+        private const string simpleIfTitle = "Add null reference check";
+        private const string IfWithBracesTitle = "Add null reference check (with braces)";
 
         public sealed override ImmutableArray<string> FixableDiagnosticIds => ImmutableArray.Create(ConstructorNullAnalyzer.DiagnosticId);
 
@@ -40,9 +42,16 @@ namespace ConstructorNullAnalyzer
             // Register a code action that will invoke the fix.
             context.RegisterCodeFix(
                 CodeAction.Create(
-                    title: title,
-                    createChangedSolution: c => AddNullCheck(context.Document, constructorToken, paramNames, c), 
-                    equivalenceKey: title),
+                    title: simpleIfTitle,
+                    createChangedSolution: c => AddNullCheck(context.Document, constructorToken, paramNames, FixType.SimpleIf, c), 
+                    equivalenceKey: simpleIfTitle),
+                diagnostic);
+
+            context.RegisterCodeFix(
+                CodeAction.Create(
+                    title: IfWithBracesTitle,
+                    createChangedSolution: c => AddNullCheck(context.Document, constructorToken, paramNames, FixType.IfWithBlock, c),
+                    equivalenceKey: IfWithBracesTitle),
                 diagnostic);
         }
 
@@ -52,9 +61,9 @@ namespace ConstructorNullAnalyzer
             return paramToken.ValueText;
         }
 
-        private async Task<Solution> AddNullCheck(Document document, ConstructorDeclarationSyntax constructor, IEnumerable<string> paramNames, CancellationToken cancellationToken)
+        private async Task<Solution> AddNullCheck(Document document, ConstructorDeclarationSyntax constructor, IEnumerable<string> paramNames,  FixType fixType, CancellationToken cancellationToken)
         {
-            var ifStatements = paramNames.Select(CreateIfStatement);
+            var ifStatements = paramNames.Select(x => CreateIfStatement(x, fixType));
             var newBodyStatements = constructor.Body.Statements.InsertRange(0, ifStatements);
             var newBody = constructor.Body.WithStatements(newBodyStatements);
 
@@ -79,7 +88,7 @@ namespace ConstructorNullAnalyzer
             return newDocument.Project.Solution;
         }
 
-        private static IfStatementSyntax CreateIfStatement(string paramName)
+        private static IfStatementSyntax CreateIfStatement(string paramName, FixType fixType)
         {
             var identifier = IdentifierName(paramName);
             var nullSyntax = LiteralExpression(SyntaxKind.NullLiteralExpression);
@@ -99,8 +108,21 @@ namespace ConstructorNullAnalyzer
 
             var throwStatement = ThrowStatement().WithExpression(newStatement);
 
-            var ifStatement = IfStatement(condition, throwStatement);
-            return ifStatement;
+            switch (fixType)
+            {
+                case FixType.SimpleIf:
+                {
+                    var ifStatement = IfStatement(condition, throwStatement);
+                    return ifStatement;
+                }
+                case FixType.IfWithBlock:
+                {
+                    var blockSyntax = Block(throwStatement);
+                    var ifStatement = IfStatement(condition, blockSyntax);
+                    return ifStatement;
+                }
+                default: throw new NotImplementedException($"Unknown fix type {fixType}");
+            }
         }
     }
 }
