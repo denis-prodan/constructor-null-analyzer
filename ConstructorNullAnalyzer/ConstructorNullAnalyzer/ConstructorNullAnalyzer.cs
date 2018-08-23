@@ -13,14 +13,31 @@ namespace ConstructorNullAnalyzer
     public class ConstructorNullAnalyzer : DiagnosticAnalyzer
     {
         private const string Category = "Correctness";
+        private const string AnalyzerErrorDiagnosticId = "CA000";
         public const string DiagnosticId = "CA001";
         private static readonly LocalizableString Title = "Not checked reference parameter in constructor";
         private static readonly LocalizableString MessageFormat = "Constructor should check that parameter(s) {0} are not null";
         private static readonly LocalizableString Description = "All reference type parameters should be checked for not-null";
 
-        private static readonly DiagnosticDescriptor Rule = new DiagnosticDescriptor(DiagnosticId, Title, MessageFormat, Category, DiagnosticSeverity.Warning, isEnabledByDefault: true, description: Description);
+        private static readonly DiagnosticDescriptor Rule = new DiagnosticDescriptor(
+            id: DiagnosticId,
+            title: Title,
+            messageFormat: MessageFormat,
+            category: Category,
+            defaultSeverity: DiagnosticSeverity.Warning,
+            isEnabledByDefault: true,
+            description: Description);
 
-        public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics => ImmutableArray.Create(Rule);
+        private static readonly DiagnosticDescriptor AnalyzerErrorDescriptor = new DiagnosticDescriptor(
+            id: AnalyzerErrorDiagnosticId,
+            title: "ConstructorNullAnalyzer throws unhandled exception",
+            messageFormat: "Analyzer failed with exception: {0}",
+            category: Category,
+            defaultSeverity: DiagnosticSeverity.Info,
+            isEnabledByDefault: true,
+            description: "Inner exception inside analyzer. Please, contact author with details");
+
+        public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics => ImmutableArray.Create(Rule, AnalyzerErrorDescriptor);
 
         public override void Initialize(AnalysisContext context)
         {
@@ -35,16 +52,8 @@ namespace ConstructorNullAnalyzer
             }
             catch (Exception e)
             {
-                var analyzerErrorDescriptor = new DiagnosticDescriptor(
-                    id: "CA000",
-                    title: "ConstructorNullAnalyzer throws unhandled exception",
-                    messageFormat: "Analyzer failed with exception: {0}",
-                    category: Category,
-                    defaultSeverity: DiagnosticSeverity.Info,
-                    isEnabledByDefault: true,
-                    description: "Inner exception inside analyzer. Please, contact author with details");
                 var diagnostic = Diagnostic.Create(
-                    descriptor: analyzerErrorDescriptor,
+                    descriptor: AnalyzerErrorDescriptor,
                     location: context.Node.GetLocation(),
                     messageArgs: e.ToString());
 
@@ -99,6 +108,7 @@ namespace ConstructorNullAnalyzer
             if (statement is LocalDeclarationStatementSyntax declarationStatement)
             {
                 return declarationStatement.Declaration.Variables
+                    .Where(x => x.Initializer != null)
                     .Select(x => x.Initializer.Value)
                     .OfType<BinaryExpressionSyntax>()
                     .Select(ProcessBinaryIfCoalesce);

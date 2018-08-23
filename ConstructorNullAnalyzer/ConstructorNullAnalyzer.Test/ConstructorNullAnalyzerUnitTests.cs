@@ -152,6 +152,89 @@ namespace ConsoleApplication1
         }
 
         [TestMethod]
+        public void CoalesceFixer()
+        {
+            var constructorDeclaration = @"
+        public TypeName(string param1, string param2)
+        {
+            field1 = param1;
+            var s = param2;
+        }
+
+        private string field1;";
+
+            var test = BuildDocumentCode(constructorDeclaration);
+
+            var expected = new DiagnosticResult
+            {
+                Id = "CA001",
+                Message = string.Format("Constructor should check that parameter(s) {0} are not null", "param1, param2"),
+                Severity = DiagnosticSeverity.Warning,
+                Locations =
+                    new[]
+                    {
+                        new DiagnosticResultLocation("Test0.cs", 12, 16),
+                        new DiagnosticResultLocation("Test0.cs", 12, 32),
+                        new DiagnosticResultLocation("Test0.cs", 12, 47),
+                    }
+            };
+
+            VerifyCSharpDiagnostic(test, expected);
+
+            var newConstructor = @"
+        public TypeName(string param1, string param2)
+        {
+            field1 = param1 ?? throw new ArgumentNullException(nameof(param1));
+            var s = param2 ?? throw new ArgumentNullException(nameof(param2));
+        }
+
+        private string field1;";
+            var fixtest = BuildDocumentCode(newConstructor);
+
+            VerifyCSharpFix(test, fixtest, 2);
+        }
+
+        [TestMethod]
+        public void MultipleDeclarationVerifiedAndCoaleseFixed()
+        {
+            var constructorDeclaration = @"
+        public TypeName(string param1)
+        {
+            string s, k = param1;
+        }
+
+        private string field1;";
+
+            var test = BuildDocumentCode(constructorDeclaration);
+
+            var expected = new DiagnosticResult
+            {
+                Id = "CA001",
+                Message = string.Format("Constructor should check that parameter(s) {0} are not null", "param1"),
+                Severity = DiagnosticSeverity.Warning,
+                Locations =
+                    new[]
+                    {
+                        new DiagnosticResultLocation("Test0.cs", 12, 16),
+                        new DiagnosticResultLocation("Test0.cs", 12, 32)
+                    }
+            };
+
+            VerifyCSharpDiagnostic(test, expected);
+
+            var newConstructor = @"
+        public TypeName(string param1)
+        {
+            string s, k = param1 ?? throw new ArgumentNullException(nameof(param1));
+        }
+
+        private string field1;";
+            var fixtest = BuildDocumentCode(newConstructor);
+
+            VerifyCSharpFix(test, fixtest, 2);
+        }
+
+        [TestMethod]
         public void GenericValidatedAndFixed()
         {
             var constructorDeclaration = @"
