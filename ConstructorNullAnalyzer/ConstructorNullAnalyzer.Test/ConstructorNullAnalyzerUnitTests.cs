@@ -152,6 +152,68 @@ namespace ConsoleApplication1
         }
 
         [TestMethod]
+        public void ContractRequiresValid()
+        {
+            var constructorDeclaration = @"
+        public TypeName(string param1)
+        {
+            Contract.Requires(param1 != null);
+        }";
+
+            var test = BuildDocumentCode(constructorDeclaration);
+
+            VerifyCSharpDiagnostic(test);
+        }
+
+        [TestMethod]
+        public void ContractFixer()
+        {
+            var constructorDeclaration = @"
+        public TypeName(string param1, string param2)
+        {
+            field1 = param1;
+            var s = param2;
+        }
+
+        private string field1;";
+
+            var test = BuildDocumentCode(constructorDeclaration);
+
+            var expected = new DiagnosticResult
+            {
+                Id = "CA001",
+                Message = string.Format("Constructor should check that parameter(s) {0} are not null", "param1, param2"),
+                Severity = DiagnosticSeverity.Warning,
+                Locations =
+                    new[]
+                    {
+                        new DiagnosticResultLocation("Test0.cs", 12, 16),
+                        new DiagnosticResultLocation("Test0.cs", 12, 32),
+                        new DiagnosticResultLocation("Test0.cs", 12, 47),
+                    }
+            };
+
+            VerifyCSharpDiagnostic(test, expected);
+
+            var newConstructor = @"
+        public TypeName(string param1, string param2)
+        {
+            Contract.Requires(param1 != null);
+            Contract.Requires(param2 != null);
+            field1 = param1;
+            var s = param2;
+        }
+
+        private string field1;";
+            var fixtest = BuildDocumentCode(newConstructor);
+            var fixtestWithNewUsing = fixtest.Replace("using System.Diagnostics;",
+@"using System.Diagnostics;
+using System.Diagnostics.Contracts;");
+
+            VerifyCSharpFix(test, fixtestWithNewUsing, 3);
+        }
+
+        [TestMethod]
         public void CoalesceFixer()
         {
             var constructorDeclaration = @"

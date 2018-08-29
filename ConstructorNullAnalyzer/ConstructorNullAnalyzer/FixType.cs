@@ -1,13 +1,10 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Text;
-
-namespace ConstructorNullAnalyzer
+﻿namespace ConstructorNullAnalyzer
 {
     public enum FixType
     {
         SimpleIf,
         IfWithBlock,
-        CoalesceOperator
+        CoalesceOperator,
+        ContractRequires
     }
 }

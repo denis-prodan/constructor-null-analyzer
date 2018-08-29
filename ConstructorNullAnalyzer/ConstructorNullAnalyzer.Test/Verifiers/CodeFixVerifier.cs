@@ -124,17 +124,15 @@ namespace TestHelper
             //after applying all of the code fixes, compare the resulting string to the inputted one
             var actual = GetStringFromDocument(document);
 
-            var newSourceWithoutFormattiong = RemoveFormatting(newSource);
-            var actualWithoutFormatting = RemoveFormatting(actual);
+            var newSourceWithoutFormattiong = AlignLineBreaks(newSource);
+            var actualWithoutFormatting = AlignLineBreaks(actual);
 
             Assert.AreEqual(newSourceWithoutFormattiong, actualWithoutFormatting);
         }
 
-        private string RemoveFormatting(string code)
+        private string AlignLineBreaks(string code)
         {
-            return code
-                .Replace("\r\n", "")
-                .Replace("\n", "");
+            return code.Replace("\r\n", "\n");
         }
     }
 }
