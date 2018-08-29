@@ -176,8 +176,8 @@ namespace ConstructorNullAnalyzer
             if (binaryExpression.Left is BinaryExpressionSyntax leftBinaryExpression
                 && binaryExpression.Right is BinaryExpressionSyntax rightBinaryExpression)
             {
-                var leftResult = CheckBinaryExpression(leftBinaryExpression);
-                var rightResult = CheckBinaryExpression(rightBinaryExpression);
+                var leftResult = CheckBinaryExpression(leftBinaryExpression, expectedKind);
+                var rightResult = CheckBinaryExpression(rightBinaryExpression, expectedKind);
                 return leftResult.Union(rightResult).ToList();
             }
 
