@@ -101,7 +101,7 @@ namespace ConstructorNullAnalyzer
             if (statement is IfStatementSyntax ifStatement)
             {
                 var conditionExpression = ifStatement.Condition as BinaryExpressionSyntax;
-                var checkedVariables = CheckBinaryExpression(conditionExpression);
+                var checkedVariables = CheckBinaryExpression(conditionExpression, SyntaxKind.EqualsEqualsToken);
                 return checkedVariables;
             }
 
@@ -123,6 +123,24 @@ namespace ConstructorNullAnalyzer
                         return new[] {ProcessBinaryIfCoalesce(binaryExpression)};
                     }
                 }
+
+                if (expressionStatement.Expression is InvocationExpressionSyntax invocationStatement)
+                {
+                    if (invocationStatement.Expression is MemberAccessExpressionSyntax memberAccessSyntax)
+                    {
+                        if (memberAccessSyntax.Name.Identifier.Text == "Requires"
+                            && memberAccessSyntax.Expression is IdentifierNameSyntax memberIdentifier)
+                        {
+                            if (memberIdentifier.Identifier.Text == "Contract")
+                            {
+                                return invocationStatement.ArgumentList.Arguments
+                                    .Select(x => x.Expression)
+                                    .OfType<BinaryExpressionSyntax>()
+                                    .SelectMany(x => CheckBinaryExpression(x, SyntaxKind.ExclamationEqualsToken));
+                            }
+                        }
+                    }
+                }
             }
 
             return new List<string>();
@@ -139,18 +157,18 @@ namespace ConstructorNullAnalyzer
             return null;
         }
 
-        private static List<string> CheckBinaryExpression(BinaryExpressionSyntax binaryExpression)
+        private static List<string> CheckBinaryExpression(BinaryExpressionSyntax binaryExpression, SyntaxKind expectedKind)
         {
             if (binaryExpression.Left is IdentifierNameSyntax leftIdentifier 
                 && binaryExpression.Right.IsKind(SyntaxKind.NullLiteralExpression)
-                && binaryExpression.OperatorToken.IsKind(SyntaxKind.EqualsEqualsToken))
+                && binaryExpression.OperatorToken.IsKind(expectedKind))
             {
                 return new List<string> {leftIdentifier.Identifier.Text};
             }
 
             if (binaryExpression.Left.IsKind(SyntaxKind.NullLiteralExpression) 
                 && binaryExpression.Right is IdentifierNameSyntax rightIdentifier
-                && binaryExpression.OperatorToken.IsKind(SyntaxKind.EqualsEqualsToken))
+                && binaryExpression.OperatorToken.IsKind(expectedKind))
             {
                 return new List<string> { rightIdentifier.Identifier.Text };
             }
@@ -158,8 +176,8 @@ namespace ConstructorNullAnalyzer
             if (binaryExpression.Left is BinaryExpressionSyntax leftBinaryExpression
                 && binaryExpression.Right is BinaryExpressionSyntax rightBinaryExpression)
             {
-                var leftResult = CheckBinaryExpression(leftBinaryExpression);
-                var rightResult = CheckBinaryExpression(rightBinaryExpression);
+                var leftResult = CheckBinaryExpression(leftBinaryExpression, expectedKind);
+                var rightResult = CheckBinaryExpression(rightBinaryExpression, expectedKind);
                 return leftResult.Union(rightResult).ToList();
             }
 

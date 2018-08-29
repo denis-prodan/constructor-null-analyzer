@@ -21,6 +21,7 @@ namespace ConstructorNullAnalyzer
         private const string SimpleIfTitle = "Add null reference check";
         private const string IfWithBracesTitle = "Add null reference check (with braces)";
         private const string CoalesceTitle = "Add coalesce checks for existing assignments";
+        private const string ContractTitle = "Add contract check";
 
         public sealed override ImmutableArray<string> FixableDiagnosticIds => ImmutableArray.Create(ConstructorNullAnalyzer.DiagnosticId);
 
@@ -61,6 +62,12 @@ namespace ConstructorNullAnalyzer
                     createChangedSolution: c => AddNullCheck(context.Document, constructorToken, paramNames, FixType.CoalesceOperator, c),
                     equivalenceKey: CoalesceTitle),
                 diagnostic);
+            context.RegisterCodeFix(
+                CodeAction.Create(
+                    title: ContractTitle,
+                    createChangedSolution: c => AddNullCheck(context.Document, constructorToken, paramNames, FixType.ContractRequires, c),
+                    equivalenceKey: ContractTitle),
+                diagnostic);
         }
 
         private string GetParamName(SyntaxNode root, Location location)
@@ -84,13 +91,34 @@ namespace ConstructorNullAnalyzer
             documentEditor.ReplaceNode(constructor.Body, newBody);
             var newDocument = documentEditor.GetChangedDocument();
 
-            if (documentEditor.OriginalRoot is CompilationUnitSyntax compilationUnitSyntax 
-                && compilationUnitSyntax.Usings.All(x => x.Name.ToString() != "System"))
+            return await AddMissingUsingsIfNeeded(documentEditor, newDocument, GetRequiredUsingName(fixType), cancellationToken);
+        }
+
+        private static string GetRequiredUsingName(FixType fixType)
+        {
+            switch (fixType)
+            {
+                case FixType.ContractRequires: return "System.Diagnostics.Contracts";
+                case FixType.CoalesceOperator:
+                case FixType.IfWithBlock:
+                case FixType.SimpleIf: return "System";
+                default: throw new NotImplementedException($"Unknown fix type {fixType}");
+            }
+        }
+
+        private static async Task<Solution> AddMissingUsingsIfNeeded(
+            DocumentEditor documentEditor,
+            Document newDocument,
+            string namespaceName,
+            CancellationToken cancellationToken)
+        {
+            if (documentEditor.OriginalRoot is CompilationUnitSyntax compilationUnitSyntax
+                && compilationUnitSyntax.Usings.All(x => x.Name.ToString() != namespaceName))
             {
                 // Have to create new editor, since it overwrites/can't find node if do both changes in one editor
                 var usingsDocumentEditor = await DocumentEditor.CreateAsync(newDocument, cancellationToken);
                 var newCompilationUnitSyntax = usingsDocumentEditor.OriginalRoot as CompilationUnitSyntax;
-                var newUsings = newCompilationUnitSyntax.Usings.Add(UsingDirective(IdentifierName("System")))
+                var newUsings = newCompilationUnitSyntax.Usings.Add(UsingDirective(IdentifierName(namespaceName)))
                     .OrderBy(x => x.Name.ToString());
                 var newRoot = newCompilationUnitSyntax.WithUsings(new SyntaxList<UsingDirectiveSyntax>(newUsings));
                 usingsDocumentEditor.ReplaceNode(newCompilationUnitSyntax, newRoot);
@@ -125,6 +153,13 @@ namespace ConstructorNullAnalyzer
 
                     return updatedStatements;
                 }
+                case FixType.ContractRequires:
+                {
+                    var paramFixStatements = paramNames.Select(CreateContractRequires)
+                        .Where(x => x != null)
+                        .ToList();
+                    return constructor.Body.Statements.InsertRange(0, paramFixStatements);
+                    }
                 case FixType.SimpleIf:
                 case FixType.IfWithBlock:
                 {
@@ -254,6 +289,23 @@ namespace ConstructorNullAnalyzer
                 }
                 default: throw new NotImplementedException($"Unknown fix type {fixType}");
             }
+        }
+
+        private static StatementSyntax CreateContractRequires(string paramName)
+        {
+            var identifier = IdentifierName(paramName);
+
+            var nullSyntax = LiteralExpression(SyntaxKind.NullLiteralExpression);
+            var condition = BinaryExpression(SyntaxKind.NotEqualsExpression, identifier, nullSyntax);
+
+            var requiresExpression = InvocationExpression(
+                    MemberAccessExpression(
+                        SyntaxKind.SimpleMemberAccessExpression,
+                        IdentifierName("Contract"),
+                        IdentifierName("Requires")))
+                .WithArgumentList(ArgumentList(SingletonSeparatedList(Argument(condition))));
+
+            return ExpressionStatement(requiresExpression);
         }
 
         private static ExpressionSyntax BuildExceptionExpression(IdentifierNameSyntax identifier)
