@@ -19,7 +19,7 @@ using System.Threading.Tasks;
 
 namespace ConsoleApplication1
 {{
-    class TypeName
+    class TypeName{2}
     {{{0}
     }}
     {1}
@@ -134,6 +134,42 @@ namespace ConsoleApplication1
         }";
 
             var test = BuildDocumentCode(constructorDeclaration);
+
+            var expected = new DiagnosticResult
+            {
+                Id = "CA001",
+                Message = string.Format("Constructor should check that parameter(s) {0} are not null", "param1"),
+                Severity = DiagnosticSeverity.Warning,
+                Locations =
+                    new[]
+                    {
+                        new DiagnosticResultLocation("Test0.cs", 12, 16),
+                        new DiagnosticResultLocation("Test0.cs", 12, 32),
+                    }
+            };
+
+            VerifyCSharpDiagnostic(test, expected);
+        }
+
+        [TestMethod]
+        public void ParamsPassedToBaseAreNotVerified()
+        {
+            var constructorDeclaration = @"
+        public TypeName(string param1, string baseParam): base(baseParam)
+        {
+            var s = param1;
+        }";
+            var baseClass = @"
+    public class BaseType
+    {
+        public BaseType(string param1)
+        {
+            if (param1 == null)
+                throw new ArgumentNullException(nameof(param1));
+        }
+    }";
+
+            var test = BuildDocumentCode(constructorDeclaration, baseClass, ": BaseType");
 
             var expected = new DiagnosticResult
             {
@@ -359,6 +395,6 @@ using System.Diagnostics.Contracts;");
             return new ConstructorNullAnalyzer();
         }
 
-        private string BuildDocumentCode(string constructor, string addition = "") => string.Format(CodeWrapper, constructor, addition);
+        private string BuildDocumentCode(string constructor, string addition = "", string baseDeclaration = "") => string.Format(CodeWrapper, constructor, addition, baseDeclaration);
     }
 }
