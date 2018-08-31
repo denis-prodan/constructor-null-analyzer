@@ -19,8 +19,9 @@ namespace ConstructorNullAnalyzer
     public class ConstructorNullAnalyzerCodeFixProvider : CodeFixProvider
     {
         private const string SimpleIfTitle = "Add null reference check";
+        private const string SimpleIfPlusCoalesceTitle = "Add null reference check with coalesce where possible";
         private const string IfWithBracesTitle = "Add null reference check (with braces)";
-        private const string CoalesceTitle = "Add coalesce checks for existing assignments";
+        private const string IfWithBracesPlusCoalesceTitle = "Add null reference check (with braces) and coalesce where possible";
         private const string ContractTitle = "Add contract check";
 
         public sealed override ImmutableArray<string> FixableDiagnosticIds => ImmutableArray.Create(ConstructorNullAnalyzer.DiagnosticId);
@@ -41,7 +42,8 @@ namespace ConstructorNullAnalyzer
             var constructorToken = root.FindToken(diagnosticSpan.Start).Parent as ConstructorDeclarationSyntax;
             var paramNames = diagnostic.AdditionalLocations.Select(x => GetParamName(constructorToken, x)).ToList();
 
-            // Register a code action that will invoke the fix.
+            var coalsceSupported = CoalesceSupported(context);
+
             context.RegisterCodeFix(
                 CodeAction.Create(
                     title: SimpleIfTitle,
@@ -56,18 +58,40 @@ namespace ConstructorNullAnalyzer
                     equivalenceKey: IfWithBracesTitle),
                 diagnostic);
 
-            context.RegisterCodeFix(
-                CodeAction.Create(
-                    title: CoalesceTitle,
-                    createChangedSolution: c => AddNullCheck(context.Document, constructorToken, paramNames, FixType.CoalesceOperator, c),
-                    equivalenceKey: CoalesceTitle),
-                diagnostic);
+            if (coalsceSupported)
+            {
+                context.RegisterCodeFix(
+                    CodeAction.Create(
+                        title: SimpleIfPlusCoalesceTitle,
+                        createChangedSolution: c => AddNullCheck(context.Document, constructorToken, paramNames, FixType.SimpleIfPlusCoalesce, c),
+                        equivalenceKey: SimpleIfPlusCoalesceTitle),
+                    diagnostic);
+
+                context.RegisterCodeFix(
+                    CodeAction.Create(
+                        title: IfWithBracesPlusCoalesceTitle,
+                        createChangedSolution: c => AddNullCheck(context.Document, constructorToken, paramNames, FixType.IfWithBlockPlusCoalesce, c),
+                        equivalenceKey: IfWithBracesPlusCoalesceTitle),
+                    diagnostic);
+            }
+
             context.RegisterCodeFix(
                 CodeAction.Create(
                     title: ContractTitle,
                     createChangedSolution: c => AddNullCheck(context.Document, constructorToken, paramNames, FixType.ContractRequires, c),
                     equivalenceKey: ContractTitle),
                 diagnostic);
+        }
+
+        private static bool CoalesceSupported(CodeFixContext context)
+        {
+            if (context.Document.Project.ParseOptions is CSharpParseOptions parseOptions)
+            {
+                var languageVersion = parseOptions.LanguageVersion;
+                return languageVersion >= LanguageVersion.CSharp7;
+            }
+
+            return false;
         }
 
         private string GetParamName(SyntaxNode root, Location location)
@@ -99,9 +123,10 @@ namespace ConstructorNullAnalyzer
             switch (fixType)
             {
                 case FixType.ContractRequires: return "System.Diagnostics.Contracts";
-                case FixType.CoalesceOperator:
+                case FixType.IfWithBlockPlusCoalesce:
                 case FixType.IfWithBlock:
-                case FixType.SimpleIf: return "System";
+                case FixType.SimpleIf:
+                case FixType.SimpleIfPlusCoalesce: return "System";
                 default: throw new NotImplementedException($"Unknown fix type {fixType}");
             }
         }
@@ -136,30 +161,44 @@ namespace ConstructorNullAnalyzer
         {
             switch (fixType)
             {
-                case FixType.CoalesceOperator:
+                case FixType.IfWithBlockPlusCoalesce:
+                case FixType.SimpleIfPlusCoalesce:
                 {
-                    var assignmentStatements = paramNames.Select(x => CreateFixerForAssignment(constructor, x))
-                        .Where(x => x.newStatement != null);
-                    var declarationFixStatements = paramNames.Select(x => CreateFixerForDeclaration(constructor, x)).ToList();
+                    // Coalesce fixes where possible
+                    var assignmentStatements = paramNames.Select(x => CreateFixerForAssignment(constructor, x));
+                    var declarationFixStatements =
+                        paramNames.Select(x => CreateFixerForDeclaration(constructor, x)).ToList();
 
-                    var paramFixStatements = declarationFixStatements.Union(assignmentStatements);
+                    var paramFixStatements = declarationFixStatements.Union(assignmentStatements).ToArray();
                     var updatedStatements = constructor.Body.Statements;
-                    foreach (var (oldStatement, newStatement) in paramFixStatements.Where(x => x.oldStatement != null))
+                    foreach (var (oldStatement, newStatement, _) in paramFixStatements.Where(
+                        x => x.oldStatement != null))
                     {
                         var oldStatementIndex = constructor.Body.Statements.IndexOf(oldStatement);
-                        updatedStatements = updatedStatements.RemoveAt(oldStatementIndex);
-                        updatedStatements = updatedStatements.Insert(oldStatementIndex, newStatement);
+                        updatedStatements = updatedStatements
+                            .RemoveAt(oldStatementIndex)
+                            .Insert(oldStatementIndex, newStatement);
                     }
 
-                    return updatedStatements;
-                }
+                    // if fixes where coalesce not applicable
+                    var processedParams = paramFixStatements
+                        .Where(x => x.newStatement != null)
+                        .Select(x => x.paramName)
+                        .ToArray();
+                    var notProcessedParameters = paramNames.Except(processedParams);
+                    var paramFixIfStatements = notProcessedParameters.Select(x => CreateIfStatement(x, fixType))
+                        .Where(x => x != null)
+                        .ToList();
+
+                    return updatedStatements.InsertRange(0, paramFixIfStatements);
+                    }
                 case FixType.ContractRequires:
                 {
                     var paramFixStatements = paramNames.Select(CreateContractRequires)
                         .Where(x => x != null)
                         .ToList();
                     return constructor.Body.Statements.InsertRange(0, paramFixStatements);
-                    }
+                }
                 case FixType.SimpleIf:
                 case FixType.IfWithBlock:
                 {
@@ -173,7 +212,7 @@ namespace ConstructorNullAnalyzer
             }
         }
 
-        private static (StatementSyntax oldStatement, StatementSyntax newStatement) CreateFixerForDeclaration(
+        private static (StatementSyntax oldStatement, StatementSyntax newStatement, string paramName) CreateFixerForDeclaration(
             ConstructorDeclarationSyntax constructor,
             string paramName)
         {
@@ -183,7 +222,7 @@ namespace ConstructorNullAnalyzer
 
             if (declarationStatement == null)
             {
-                return (null, null);
+                return (null, null, paramName);
             }
 
             var identifier = GetIdentifiersFromDeclaration(declarationStatement.Declaration)
@@ -194,7 +233,7 @@ namespace ConstructorNullAnalyzer
                 declarationStatement.Declaration.Variables.FirstOrDefault(x => x.Initializer != null);
             if (declarationToChange == null)
             {
-                return (null, null);
+                return (null, null, paramName);
             }
 
             var newInitializer = declarationToChange.Initializer.WithValue(coalesceExpression);
@@ -203,7 +242,7 @@ namespace ConstructorNullAnalyzer
             var newDeclarationStatement =
                 LocalDeclarationStatement(
                     VariableDeclaration(declarationStatement.Declaration.Type, newVariablesDeclaration));
-            return (oldStatement: declarationStatement, newStatement: newDeclarationStatement);
+            return (oldStatement: declarationStatement, newStatement: newDeclarationStatement, paramName);
         }
 
         private static bool IsDeclarationStatementInvolvesParam(VariableDeclarationSyntax argDeclaration, string paramName)
@@ -221,7 +260,7 @@ namespace ConstructorNullAnalyzer
                 .OfType<IdentifierNameSyntax>();
         }
 
-        private static (StatementSyntax oldStatement, StatementSyntax newStatement) CreateFixerForAssignment(
+        private static (StatementSyntax oldStatement, StatementSyntax newStatement, string paramName) CreateFixerForAssignment(
             ConstructorDeclarationSyntax constructor, string paramName)
         {
             var expressionStatements = constructor.Body.Statements
@@ -234,7 +273,7 @@ namespace ConstructorNullAnalyzer
                 .FirstOrDefault(x => IsAssignmentStatementInvolvesParam(x, paramName));
             if (assignmentExpression == null)
             {
-                return (null, null);
+                return (null, null, paramName);
             }
 
             var identifier = assignmentExpression.Right as IdentifierNameSyntax;
@@ -245,7 +284,7 @@ namespace ConstructorNullAnalyzer
                 SyntaxKind.SimpleAssignmentExpression,
                 (oldStatement.Expression as AssignmentExpressionSyntax).Left,
                 coalesceExpression);
-            return (oldStatement: oldStatement, newStatement: ExpressionStatement(newAssignement));
+            return (oldStatement: oldStatement, newStatement: ExpressionStatement(newAssignement), paramName);
         }
 
         private static ExpressionSyntax BuildCoalesceExpression(IdentifierNameSyntax identifier)
@@ -276,11 +315,13 @@ namespace ConstructorNullAnalyzer
 
             switch (fixType)
             {
+                case FixType.SimpleIfPlusCoalesce:
                 case FixType.SimpleIf:
                 {
                     var ifStatement = IfStatement(condition, throwStatement);
                     return ifStatement;
                 }
+                case FixType.IfWithBlockPlusCoalesce:
                 case FixType.IfWithBlock:
                 {
                     var blockSyntax = Block(throwStatement);
