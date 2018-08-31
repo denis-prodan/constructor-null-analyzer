@@ -246,14 +246,14 @@ namespace ConsoleApplication1
 @"using System.Diagnostics;
 using System.Diagnostics.Contracts;");
 
-            VerifyCSharpFix(test, fixtestWithNewUsing, 3);
+            VerifyCSharpFix(test, fixtestWithNewUsing, 4);
         }
 
         [TestMethod]
-        public void CoalesceFixer()
+        public void MixedIfCoalesceFixer()
         {
             var constructorDeclaration = @"
-        public TypeName(string param1, string param2)
+        public TypeName(string param1, string param2, string param3)
         {
             field1 = param1;
             var s = param2;
@@ -266,7 +266,7 @@ using System.Diagnostics.Contracts;");
             var expected = new DiagnosticResult
             {
                 Id = "CA001",
-                Message = string.Format("Constructor should check that parameter(s) {0} are not null", "param1, param2"),
+                Message = string.Format("Constructor should check that parameter(s) {0} are not null", "param1, param2, param3"),
                 Severity = DiagnosticSeverity.Warning,
                 Locations =
                     new[]
@@ -274,14 +274,17 @@ using System.Diagnostics.Contracts;");
                         new DiagnosticResultLocation("Test0.cs", 12, 16),
                         new DiagnosticResultLocation("Test0.cs", 12, 32),
                         new DiagnosticResultLocation("Test0.cs", 12, 47),
+                        new DiagnosticResultLocation("Test0.cs", 12, 62),
                     }
             };
 
             VerifyCSharpDiagnostic(test, expected);
 
             var newConstructor = @"
-        public TypeName(string param1, string param2)
+        public TypeName(string param1, string param2, string param3)
         {
+            if (param3 == null)
+                throw new ArgumentNullException(nameof(param3));
             field1 = param1 ?? throw new ArgumentNullException(nameof(param1));
             var s = param2 ?? throw new ArgumentNullException(nameof(param2));
         }

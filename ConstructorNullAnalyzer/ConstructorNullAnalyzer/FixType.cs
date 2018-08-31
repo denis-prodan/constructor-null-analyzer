@@ -3,8 +3,9 @@
     public enum FixType
     {
         SimpleIf,
+        SimpleIfPlusCoalesce,
         IfWithBlock,
-        CoalesceOperator,
+        IfWithBlockPlusCoalesce,
         ContractRequires
     }
 }
