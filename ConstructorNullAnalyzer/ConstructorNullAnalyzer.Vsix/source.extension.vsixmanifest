@@ -1,9 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <PackageManifest Version="2.0.0" xmlns="http://schemas.microsoft.com/developer/vsx-schema/2011" xmlns:d="http://schemas.microsoft.com/developer/vsx-schema-design/2011">
     <Metadata>
-        <Identity Id="ConstructorNullAnalyzer.9d7a24e2-4440-46f2-a094-a24d0debe405" Version="0.4" Language="en-US" Publisher="Denys Prodan"/>
-        <DisplayName>ConstructorNullAnalyzer</DisplayName>
+        <Identity Id="ConstructorNullAnalyzer.5EB5EC0A-3636-425E-BA4B-EB60C5FF6A39" Version="0.5" Language="en-US" Publisher="Denys Prodan"/>
+        <DisplayName>Constructor Null Analyzer</DisplayName>
         <Description xml:space="preserve">Roslyn analyzer that ensures that constructors verify own arguments to be not-null.</Description>
+        <MoreInfo>https://github.com/denis-prodan/constructor-null-analyzer</MoreInfo>
     </Metadata>
     <Installation>
         <InstallationTarget Id="Microsoft.VisualStudio.Community" Version="[15.0,)" />
